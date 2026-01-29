@@ -6,7 +6,7 @@ const FPS = 24;
 
 // ===== 프레임 → 초 변환 유틸 =====
 const f2s = (frame: number) => frame / FPS;
-// end frame 포함 구간을 "끝(배타)"로 만들기: (endFrame+1)/fps
+// end frame 포함 구간을 "끝(배타)"로 만들기: (end+1)/fps
 const endEx = (endFrame: number) => (endFrame + 1) / FPS;
 
 // ===== 영상 구간 =====
@@ -29,10 +29,6 @@ type Category = "UA" | "BRANDED" | "AI" | null;
 
 export default function Page() {
   const videoRef = useRef<HTMLVideoElement>(null);
-
-  // ✅ 부팅(프리로드) 로딩 UI
-  const [bootLoading, setBootLoading] = useState(true);
-  const [bootProgress, setBootProgress] = useState(0); // 0~100
 
   // ===== BGM_LOOP: WebAudio seamless loop =====
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -110,6 +106,7 @@ export default function Page() {
 
     loopLoadingRef.current = (async () => {
       const ctx = audioCtxRef.current!;
+      // ✅ 네가 실제로 쓰는 파일명에 맞춰서 확정
       const res = await fetch("/videos/BGM_LOOP.wav");
       const arr = await res.arrayBuffer();
       loopBufRef.current = await ctx.decodeAudioData(arr);
@@ -136,6 +133,7 @@ export default function Page() {
     src.buffer = buf;
     src.loop = true;
 
+    // 앞/뒤 무음이 있다면 loopStart/loopEnd로 잘라서 루프 가능
     if (opts?.loopStartSec != null) src.loopStart = opts.loopStartSec;
     if (opts?.loopEndSec != null) src.loopEnd = opts.loopEndSec;
 
@@ -189,72 +187,8 @@ export default function Page() {
     }
   };
 
-  // ✅ 부팅 프리로드: BG 첫 프레임 준비 + intro/audio 캐시 워밍
-  useEffect(() => {
-    let cancelled = false;
-
-    const preload = async () => {
-      try {
-        const v = videoRef.current;
-        if (!v) return;
-
-        // BG를 먼저 "첫 프레임"까지 준비
-        v.src = "/videos/BG01.mp4";
-        v.loop = true;
-        v.muted = true;
-        v.currentTime = 0;
-
-        const waitBGReady = new Promise<void>((resolve) => {
-          const onReady = () => {
-            v.removeEventListener("loadeddata", onReady);
-            resolve();
-          };
-          v.addEventListener("loadeddata", onReady);
-        });
-
-        // 나머지 애셋은 fetch로 캐시 워밍(개수 기반 진행률)
-        const assets = ["/videos/intro.mp4", "/videos/BGM_LOOP.wav", "/videos/BGM_ENTER.mp3"];
-
-        let done = 0;
-        const total = assets.length + 1; // +1 = BG loadeddata
-
-        const bump = () => {
-          done += 1;
-          const pct = Math.round((done / total) * 100);
-          if (!cancelled) setBootProgress(pct);
-        };
-
-        await waitBGReady;
-        bump();
-
-        await Promise.all(
-          assets.map(async (url) => {
-            try {
-              await fetch(url, { cache: "force-cache" });
-            } catch {}
-            bump();
-          })
-        );
-
-        if (!cancelled) {
-          setBootLoading(false);
-          // 로딩 끝나면 BG 재생 시작
-          v.play().catch(() => {});
-        }
-      } catch {
-        if (!cancelled) setBootLoading(false);
-      }
-    };
-
-    preload();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // ===== BG 화면 유지 =====
   useEffect(() => {
-    if (bootLoading) return; // ✅ 프리로드 끝나기 전엔 여기서 덮어쓰지 않음
     if (stage !== "BG") return;
 
     const v = videoRef.current;
@@ -278,7 +212,7 @@ export default function Page() {
 
     enterMusicTriggeredRef.current = false;
     setPhaseSafe("PLAY1");
-  }, [stage, bootLoading]);
+  }, [stage]);
 
   // ===== RAF 상태머신 =====
   useEffect(() => {
@@ -348,9 +282,6 @@ export default function Page() {
 
   // ===== ENTER 클릭: intro.mp4 시작 + BGM_LOOP 시작 =====
   const handleStartMain = async () => {
-    // 로딩 중엔 클릭 막기 (안전)
-    if (bootLoading) return;
-
     const v = videoRef.current;
     if (!v) return;
 
@@ -375,8 +306,13 @@ export default function Page() {
     await ensureAudioCtx();
     await loadLoopBuffer();
 
+    // 기본 루프
     fadeLoopGain(LOOP_VOL, 0.01);
     startSeamlessLoop();
+
+    // 만약 파일 앞/뒤 무음 때문에 아주 미세한 갭이 남으면 아래를 사용:
+    // const dur = loopBufRef.current!.duration;
+    // startSeamlessLoop({ loopStartSec: 0.02, loopEndSec: dur - 0.02 });
 
     await v.play().catch(() => {});
   };
@@ -403,8 +339,10 @@ export default function Page() {
     if (!enterMusicTriggeredRef.current) {
       enterMusicTriggeredRef.current = true;
 
+      // loop 페이드아웃 후 정지
       stopLoopAfterFade(FADE_SEC);
 
+      // enter 1회 재생 + 페이드인
       const enter = bgmEnterRef.current;
       if (enter) {
         enter.loop = false;
@@ -418,28 +356,9 @@ export default function Page() {
 
   return (
     <main className="fixed inset-0 bg-black overflow-hidden">
-      {/* ✅ 프리로딩 오버레이 */}
-      {bootLoading && (
-        <div className="absolute inset-0 z-50 bg-black flex items-center justify-center">
-          <div className="w-[320px] max-w-[80vw]">
-            <div className="text-white/80 text-sm tracking-[0.22em] text-center mb-4">
-              LOADING
-            </div>
-            <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-              <div
-                className="h-full bg-white/70 transition-[width] duration-300"
-                style={{ width: `${bootProgress}%` }}
-              />
-            </div>
-            <div className="text-white/50 text-xs text-center mt-3">{bootProgress}%</div>
-          </div>
-        </div>
-      )}
-
       {/* VIDEO */}
       <video
         ref={videoRef}
-        preload="auto"
         className={[
           "absolute inset-0 w-full h-full",
           stage === "MAIN" ? "object-contain bg-black" : "object-cover",
@@ -508,6 +427,7 @@ export default function Page() {
               onMouseEnter={() => setHoverCat("UA")}
               onMouseLeave={() => setHoverCat(null)}
             >
+              {/* glow */}
               <div
                 className={[
                   "absolute inset-0 rounded-[28px] transition-opacity duration-200",
@@ -517,6 +437,7 @@ export default function Page() {
                 <div className="absolute inset-0 rounded-[28px] bg-yellow-300/15 blur-2xl mix-blend-screen" />
               </div>
 
+              {/* label */}
               <div className="absolute left-1/2 top-[28%] -translate-x-1/2 -translate-y-1/2">
                 <div
                   className={[
@@ -542,7 +463,8 @@ export default function Page() {
                   hoverCat === "BRANDED" ? "opacity-100" : "opacity-0",
                 ].join(" ")}
               >
-                <div className="absolute inset-0 rounded-[28px] bg-yellow-300/15 blur-2xl mix-blend-screen" />
+               <div className="absolute inset-0 rounded-[28px] bg-yellow-300/15 blur-2xl mix-blend-screen" />
+
               </div>
 
               <div className="absolute left-1/2 top-[28%] -translate-x-1/2 -translate-y-1/2">
@@ -571,6 +493,7 @@ export default function Page() {
                 ].join(" ")}
               >
                 <div className="absolute inset-0 rounded-[28px] bg-yellow-300/15 blur-2xl mix-blend-screen" />
+
               </div>
 
               <div className="absolute left-1/2 top-[28%] -translate-x-1/2 -translate-y-1/2">
