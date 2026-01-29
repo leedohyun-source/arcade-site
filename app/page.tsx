@@ -10,8 +10,8 @@ const f2s = (frame: number) => frame / FPS;
 const endEx = (endFrame: number) => (endFrame + 1) / FPS;
 
 // ===== 영상 구간 =====
-const PLAY1 = { start: 0, end: 139 };
-const LOOP2 = { start: 140, end: 330 };
+const PLAY1 = { start: 0, end: 141 };
+const LOOP2 = { start: 142, end: 330 };
 const PLAY3 = { start: 331, end: 606 };
 const LOOP4 = { start: 607, end: 797 };
 const PLAY5 = { start: 798, end: 893 };
