@@ -191,66 +191,69 @@ export default function Page() {
 
   // ✅ 부팅 프리로드: BG 첫 프레임 준비 + intro/audio 캐시 워밍
   useEffect(() => {
-    let cancelled = false;
+  let cancelled = false;
 
-    const preload = async () => {
-      try {
-        const v = videoRef.current;
-        if (!v) return;
+  const preload = async () => {
+    try {
+      const v = videoRef.current;
+      if (!v) return;
 
-        // BG를 먼저 "첫 프레임"까지 준비
-        v.src = "/videos/BG01.mp4";
-        v.loop = true;
-        v.muted = true;
-        v.currentTime = 0;
+      // BG 메타데이터까지만 준비 (모바일 안정)
+      v.src = "/videos/BG01.mp4";
+      v.loop = true;
+      v.muted = true;
+      v.currentTime = 0;
+      v.load(); // 모바일에서 이벤트 안 뜨는 것 방지
 
-        const waitBGReady = new Promise<void>((resolve) => {
-          const onReady = () => {
-            v.removeEventListener("loadeddata", onReady);
-            resolve();
-          };
-          v.addEventListener("loadeddata", onReady);
-        });
-
-        // 나머지 애셋은 fetch로 캐시 워밍(개수 기반 진행률)
-        const assets = ["/videos/intro.mp4", "/videos/BGM_LOOP.wav", "/videos/BGM_ENTER.mp3"];
-
-        let done = 0;
-        const total = assets.length + 1; // +1 = BG loadeddata
-
-        const bump = () => {
-          done += 1;
-          const pct = Math.round((done / total) * 100);
-          if (!cancelled) setBootProgress(pct);
+      const waitBGReady = new Promise<void>((resolve) => {
+        const onReady = () => {
+          v.removeEventListener("loadedmetadata", onReady);
+          resolve();
         };
+        v.addEventListener("loadedmetadata", onReady);
+      });
 
-        await waitBGReady;
-        bump();
+      // 🔑 모바일에서는 큰 mp4 프리로드 안 함 (오디오만)
+      const assets = ["/videos/BGM_LOOP.wav", "/videos/BGM_ENTER.mp3"];
 
-        await Promise.all(
-          assets.map(async (url) => {
-            try {
-              await fetch(url, { cache: "force-cache" });
-            } catch {}
-            bump();
-          })
-        );
+      let done = 0;
+      const total = assets.length + 1;
 
-        if (!cancelled) {
-          setBootLoading(false);
-          // 로딩 끝나면 BG 재생 시작
-          v.play().catch(() => {});
-        }
-      } catch {
-        if (!cancelled) setBootLoading(false);
+      const bump = () => {
+        done += 1;
+        const pct = Math.round((done / total) * 100);
+        if (!cancelled) setBootProgress(pct);
+      };
+
+      // ⏱️ 4초 타임아웃 (어떤 경우든 멈추지 않게)
+      const timeout = new Promise<void>((resolve) => setTimeout(resolve, 4000));
+
+      await Promise.race([waitBGReady, timeout]);
+      bump();
+
+      await Promise.all(
+        assets.map(async (url) => {
+          try {
+            await fetch(url, { cache: "force-cache" });
+          } catch {}
+          bump();
+        })
+      );
+
+      if (!cancelled) {
+        setBootLoading(false);
+        v.play().catch(() => {});
       }
-    };
+    } catch {
+      if (!cancelled) setBootLoading(false);
+    }
+  };
 
-    preload();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  preload();
+  return () => {
+    cancelled = true;
+  };
+}, []);
 
   // ===== BG 화면 유지 =====
   useEffect(() => {
