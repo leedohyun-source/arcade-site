@@ -376,7 +376,7 @@ export default function Page() {
       {stage === "BG" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
           <div className="text-xs opacity-60 mb-1">Sound on</div>
-          <div className="text-lg mb-6">소리를 켜세ㅇㅇㅇ요</div>
+          <div className="text-lg mb-6">소리를 켜세요</div>
           <button
             onClick={handleStartMain}
             className="px-10 py-3 border border-white/70 rounded-full tracking-widest hover:bg-white hover:text-black transition"
