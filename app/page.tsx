@@ -376,7 +376,7 @@ export default function Page() {
       {stage === "BG" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
           <div className="text-xs opacity-60 mb-1">Sound on</div>
-          <div className="text-lg mb-6">소리를 켜세요</div>
+          <div className="text-lg mb-6">소리를 켜세ㅇㅇㅇ요</div>
           <button
             onClick={handleStartMain}
             className="px-10 py-3 border border-white/70 rounded-full tracking-widest hover:bg-white hover:text-black transition"
@@ -453,7 +453,7 @@ export default function Page() {
 
             {/* MID: 브랜디드 */}
             <div
-              className="absolute bottom-[90%] left-[38%] w-[24%] h-[75%]"
+              className="absolute bottom-[30%] left-[38%] w-[24%] h-[75%]"
               onMouseEnter={() => setHoverCat("BRANDED")}
               onMouseLeave={() => setHoverCat(null)}
             >
