@@ -453,7 +453,7 @@ export default function Page() {
 
             {/* MID: 브랜디드 */}
             <div
-              className="absolute bottom-[30%] left-[38%] w-[24%] h-[75%]"
+              className="absolute bottom-[90%] left-[38%] w-[24%] h-[75%]"
               onMouseEnter={() => setHoverCat("BRANDED")}
               onMouseLeave={() => setHoverCat(null)}
             >
