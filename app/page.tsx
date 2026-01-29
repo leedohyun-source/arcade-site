@@ -263,7 +263,7 @@ export default function Page() {
     const v = videoRef.current;
     if (!v) return;
 
-    v.src = "/videos/BG01.mp4";
+    v.src = "/videos/BG01_v2.mp4";
     v.loop = true;
     v.muted = true;
     v.currentTime = 0;
