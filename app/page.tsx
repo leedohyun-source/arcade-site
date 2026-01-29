@@ -360,7 +360,7 @@ export default function Page() {
     setStageSafe("MAIN");
     setPhaseSafe("PLAY1");
 
-    v.src = "/videos/intro.mp4";
+    v.src = "/videos/intro_v2.mp4";
     v.loop = false;
     v.muted = false; // 나레이션 포함
     v.currentTime = f2s(PLAY1.start);
