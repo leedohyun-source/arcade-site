@@ -15,20 +15,29 @@ const LOOP2 = { start: 142, end: 330 };
 const PLAY3 = { start: 331, end: 606 };
 const LOOP4 = { start: 607, end: 797 };
 const PLAY5 = { start: 798, end: 893 };
-const LOOP6 = { start: 894, end: 1026 };
+// ✅ 엔드(셀렉트) 상태에서 3분할 호버 루프 구간
+const HOVER_L = { start: 894, end: 915 };
+const HOVER_C = { start: 918, end: 938 };
+const HOVER_R = { start: 942, end: 960 };
 
 // ===== 오디오 페이드 시간 =====
 const FADE_SEC = 1.0;
 
 // ✅ LOOP 기본 볼륨 (원하는 값으로 조절)
 const LOOP_VOL = 0.4;
-
 type Stage = "BG" | "MAIN";
-type Phase = "PLAY1" | "LOOP2" | "PLAY3" | "LOOP4" | "PLAY5" | "LOOP6";
-type Category = "UA" | "BRANDED" | "AI" | null;
+type Phase = "PLAY1" | "LOOP2" | "PLAY3" | "LOOP4" | "PLAY5";
+
+type HoverZone = "LEFT" | "CENTER" | "RIGHT" | null;
 
 export default function Page() {
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // ✅ object-contain일 때 실제 영상이 그려지는 영역(레터박스 제외)을 계산해서,
+  // 마스크 딤/이펙트를 "영상 박스"에만 적용하기 위한 값
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [videoBox, setVideoBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+
 
   // ✅ 부팅(프리로드) 로딩 UI
   const [bootLoading, setBootLoading] = useState(true);
@@ -55,8 +64,36 @@ export default function Page() {
 
   const enterMusicTriggeredRef = useRef(false);
 
-  // ✅ LOOP6 UI Hover 상태
-  const [hoverCat, setHoverCat] = useState<Category>(null);
+  // ✅ 엔드(셀렉트) 오버레이 상태
+  const [showSelectImg, setShowSelectImg] = useState(false);
+  const showSelectImgRef = useRef(false);
+
+  const [selectImgVisible, setSelectImgVisible] = useState(false);
+
+  // ✅ 3분할 호버 상태 (셀렉트 단계에서만 사용)
+  const [hoverZone, setHoverZone] = useState<HoverZone>(null);
+  const hoverZoneRef = useRef<HoverZone>(null);
+
+  // showSelectImg가 켜질 때, CSS transition을 위해 1프레임 뒤 opacity를 올림
+  useEffect(() => {
+    showSelectImgRef.current = showSelectImg;
+    if (showSelectImg) {
+      setSelectImgVisible(false);
+      const id = requestAnimationFrame(() => setSelectImgVisible(true));
+      return () => cancelAnimationFrame(id);
+    } else {
+      setSelectImgVisible(false);
+    }
+  }, [showSelectImg]);
+
+  // hoverZone state와 ref 동기화
+  useEffect(() => {
+    hoverZoneRef.current = hoverZone;
+  }, [hoverZone]);
+
+  // ✅ SKIP 전환(암전) 상태
+  const [isSkipFading, setIsSkipFading] = useState(false);
+  const skipLockRef = useRef(false);
 
   const setStageSafe = (s: Stage) => {
     stageRef.current = s;
@@ -71,9 +108,81 @@ export default function Page() {
     setShowDown(p === "LOOP2");
     setShowEnterBtn(p === "LOOP4");
 
-    // LOOP6 외에는 hover 초기화
-    if (p !== "LOOP6") setHoverCat(null);
+    // 다른 페이즈로 이동하면(=리플레이 등) 셀렉트/호버 상태 초기화
+    if (p !== "PLAY5") {
+      setHoverZone(null);
+      setShowSelectImg(false);
+    }
   };
+
+  // ✅ 영상 박스 계산 (object-contain 기준)
+  useEffect(() => {
+    const el = containerRef.current;
+    const v = videoRef.current;
+    if (!el || !v) return;
+
+    let raf = 0;
+
+    const update = () => {
+      const cw = el.clientWidth;
+      const ch = el.clientHeight;
+
+      // 메타데이터 로드 전이면 계산 불가
+      const vw = v.videoWidth || 0;
+      const vh = v.videoHeight || 0;
+      if (!cw || !ch || !vw || !vh) {
+        setVideoBox(null);
+        return;
+      }
+
+      const videoAR = vw / vh;
+      const containerAR = cw / ch;
+
+      let width = cw;
+      let height = ch;
+
+      // object-contain
+      if (containerAR > videoAR) {
+        // 컨테이너가 더 넓음 → 높이에 맞추고 좌우 레터박스
+        height = ch;
+        width = Math.round(ch * videoAR);
+      } else {
+        // 컨테이너가 더 좁음 → 너비에 맞추고 상하 레터박스
+        width = cw;
+        height = Math.round(cw / videoAR);
+      }
+
+      const left = Math.round((cw - width) / 2);
+      const top = Math.round((ch - height) / 2);
+
+      setVideoBox({ left, top, width, height });
+    };
+
+    const schedule = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+
+    // resize 대응
+    const ro = new ResizeObserver(schedule);
+    ro.observe(el);
+
+    // 메타데이터 로드/소스 변경 대응
+    const onMeta = () => schedule();
+    v.addEventListener("loadedmetadata", onMeta);
+    v.addEventListener("loadeddata", onMeta);
+
+    // 초기
+    schedule();
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      v.removeEventListener("loadedmetadata", onMeta);
+      v.removeEventListener("loadeddata", onMeta);
+    };
+  }, [stage, bootLoading]);
+
 
   // ===== HTMLAudio(ENTER) 페이드 유틸 =====
   const fadeVolume = (audio: HTMLAudioElement, from: number, to: number, sec: number) => {
@@ -250,6 +359,7 @@ export default function Page() {
   };
 
   preload();
+
   return () => {
     cancelled = true;
   };
@@ -295,6 +405,43 @@ export default function Page() {
         const t = v.currentTime;
         const p = phaseRef.current;
 
+        // ✅ 셀렉트(엔드) 모드: 893f 고정 + 3분할 호버 루프
+        if (showSelectImgRef.current) {
+          const hz = hoverZoneRef.current;
+
+          const seg =
+            hz === "LEFT" ? HOVER_L : hz === "CENTER" ? HOVER_C : hz === "RIGHT" ? HOVER_R : null;
+
+          if (!seg) {
+            // 호버 없음 → 893f 고정 (영상 정지)
+            if (!v.paused) v.pause();
+            // 외부 요인으로 시간이 흘렀을 수 있으니 주기적으로 다시 고정
+            if (Math.abs(v.currentTime - f2s(PLAY5.end)) > 0.0005) {
+              v.currentTime = f2s(PLAY5.end);
+            }
+          } else {
+            // 호버 중 → 해당 구간 루프
+            const startT = f2s(seg.start);
+            const endT = endEx(seg.end);
+            const LOOP_EPS = 0.75 / FPS; // ~0.75프레임 일찍 되감기(멈칫 감소)
+            if (t < startT || t >= endT - LOOP_EPS) {
+              const anyV: any = v;
+              try {
+                if (typeof anyV.fastSeek === "function") anyV.fastSeek(startT);
+                else v.currentTime = startT;
+              } catch {
+                v.currentTime = startT;
+              }
+            }
+            if (v.paused) {
+              v.play().catch(() => {});
+            }
+          }
+
+          raf = requestAnimationFrame(tick);
+          return;
+        }
+
         if (p === "PLAY1") {
           if (t >= endEx(PLAY1.end)) {
             v.currentTime = f2s(LOOP2.start);
@@ -319,14 +466,10 @@ export default function Page() {
           }
         } else if (p === "PLAY5") {
           if (t >= endEx(PLAY5.end)) {
-            v.currentTime = f2s(LOOP6.start);
-            v.play().catch(() => {});
-            setPhaseSafe("LOOP6");
-          }
-        } else if (p === "LOOP6") {
-          if (t >= endEx(LOOP6.end)) {
-            v.currentTime = f2s(LOOP6.start);
-            v.play().catch(() => {});
+            // ✅ PLAY5 끝에서 영상 정지 + 셀렉트 이미지 디졸브
+            v.pause();
+            v.currentTime = f2s(PLAY5.end);
+            setShowSelectImg(true);
           }
         }
       }
@@ -358,9 +501,11 @@ export default function Page() {
     if (!v) return;
 
     setStageSafe("MAIN");
+    setHoverZone(null);
+    setShowSelectImg(false);
     setPhaseSafe("PLAY1");
 
-    v.src = "/videos/intro_v2.mp4";
+    v.src = "/videos/intro_v4.mp4";
     v.loop = false;
     v.muted = false; // 나레이션 포함
     v.currentTime = f2s(PLAY1.start);
@@ -419,8 +564,101 @@ export default function Page() {
     }
   };
 
+
+// ✅ SKIP: 암전 → 음악 페이드아웃 종료 → 893f 고정 + 셀렉트 UI 진입 → 페이드인
+const handleSkipToSelect = async () => {
+  if (skipLockRef.current) return;
+  skipLockRef.current = true;
+
+  const v = videoRef.current;
+  if (!v) {
+    skipLockRef.current = false;
+    return;
+  }
+
+  // 1) 화면 암전 시작
+  setIsSkipFading(true);
+
+  // 2) 현재 재생 중인 음악(루프/엔터)을 페이드아웃하며 종료
+  // - LOOP 음악(WebAudio)
+  try {
+    stopLoopAfterFade(0.35);
+  } catch {}
+
+  // - ENTER 음악(HTMLAudio)
+  const enter = bgmEnterRef.current;
+  if (enter && !enter.paused) {
+    const from = enter.volume ?? 1;
+    fadeVolume(enter, from, 0, 0.35);
+    setTimeout(() => {
+      try {
+        enter.pause();
+        enter.currentTime = 0;
+        enter.volume = 1;
+      } catch {}
+    }, 380);
+  }
+
+  // 3) 암전이 충분히 덮일 때까지 잠깐 대기
+  await new Promise((r) => setTimeout(r, 260));
+
+  // 4) PLAY5 마지막 프레임(893f)으로 고정 + 셀렉트 UI 오버레이
+  setPhaseSafe("PLAY5");
+  setHoverZone(null);
+  v.pause();
+  v.currentTime = f2s(PLAY5.end);
+  setShowSelectImg(true);
+
+  // 5) 페이드 인
+  await new Promise((r) => requestAnimationFrame(() => r(null)));
+  setIsSkipFading(false);
+
+  // 6) 연타 방지 해제
+  setTimeout(() => {
+    skipLockRef.current = false;
+  }, 350);
+};
+
+  // ✅ REPLAY: 첫 화면 ENTER과 동일하게 처음부터 다시 실행
+  const handleReplay = async () => {
+    setHoverZone(null);
+    setShowSelectImg(false);
+    setIsSkipFading(false);
+    skipLockRef.current = false;
+    await handleStartMain();
+  };
+  // ✅ 셀렉트 상태 호버: 구간 즉시 전환(디졸브 없음)
+  const setHoverZoneImmediate = (next: HoverZone) => {
+    if (!showSelectImgRef.current) return;
+
+    const prev = hoverZoneRef.current;
+    if (prev === next) return;
+
+    setHoverZone(next);
+
+    const v = videoRef.current;
+    if (!v) return;
+
+    if (!next) {
+      v.pause();
+      v.currentTime = f2s(PLAY5.end); // 893f 고정
+      return;
+    }
+
+    const seg = next === "LEFT" ? HOVER_L : next === "CENTER" ? HOVER_C : HOVER_R;
+    v.currentTime = f2s(seg.start);
+    v.play().catch(() => {});
+  };
+
+  // 클릭 핸들러 (원하는 라우팅/분기 로직으로 교체)
+  const handleSelectClick = (z: Exclude<HoverZone, null>) => {
+    // TODO: 여기서 router.push(...) 또는 분기 로직을 넣으면 됨
+    console.log("selected:", z);
+  };
+
+
   return (
-    <main className="fixed inset-0 bg-black overflow-hidden">
+    <main className="fixed inset-0 bg-black overflow-hidden"><div ref={containerRef} className="absolute inset-0">
       {/* ✅ 프리로딩 오버레이 */}
       {bootLoading && (
         <div className="absolute inset-0 z-50 bg-black flex items-center justify-center">
@@ -450,6 +688,48 @@ export default function Page() {
         playsInline
       />
 
+
+      {/* ✅ PLAY5 종료 후 셀렉트 이미지 오버레이 */}
+      <img
+        src="/images/select_img.jpg"
+        alt="select"
+        className={[
+          "absolute inset-0 w-full h-full object-contain bg-black",
+          "transition-opacity duration-500",
+          showSelectImg && selectImgVisible ? "opacity-100" : "opacity-0",
+          hoverZone ? "invisible" : "visible",
+          "pointer-events-none",
+        ].join(" ")}
+        draggable={false}
+      />
+
+      {/* ✅ 호버 전환용 크로스페이드 레이어 */}
+
+      {/* ✅ 셀렉트 3분할 핫스팟 (세로 3등분) */}
+      {stage === "MAIN" && showSelectImg && (
+        <div
+          className="absolute inset-0 z-30 flex"
+          onMouseLeave={() => setHoverZoneImmediate(null)}
+        >
+          <div
+            className="flex-1"
+            onMouseEnter={() => setHoverZoneImmediate("LEFT")}
+            onClick={() => handleSelectClick("LEFT")}
+          />
+          <div
+            className="flex-1"
+            onMouseEnter={() => setHoverZoneImmediate("CENTER")}
+            onClick={() => handleSelectClick("CENTER")}
+          />
+          <div
+            className="flex-1"
+            onMouseEnter={() => setHoverZoneImmediate("RIGHT")}
+            onClick={() => handleSelectClick("RIGHT")}
+          />
+        </div>
+      )}
+
+
       {/* AUDIO (ENTER만) */}
       <audio ref={bgmEnterRef} src="/videos/BGM_ENTER.mp3" preload="auto" />
 
@@ -474,9 +754,9 @@ export default function Page() {
       {stage === "MAIN" && showDown && (
         <button
           onClick={handleDownToPlay3}
-          className="absolute bottom-10 left-1/2 -translate-x-1/2 w-12 h-12 rounded-full border border-white/60 text-white flex items-center justify-center hover:bg-white hover:text-black transition"
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 px-8 py-3 border border-white/70 rounded-full text-white hover:bg-white hover:text-black transition whitespace-nowrap"
         >
-          ↓
+          문앞으로 이동
         </button>
       )}
 
@@ -486,111 +766,54 @@ export default function Page() {
           onClick={handleEnterToPlay5}
           className="absolute bottom-10 left-1/2 -translate-x-1/2 px-10 py-3 border border-white/70 rounded-full tracking-widest text-white hover:bg-white hover:text-black transition"
         >
-          ENTER
+          입장
         </button>
       )}
 
-      {/* ✅ LOOP6: SELECT CATEGORY + 3개 오락기 호버 인터랙션 */}
-      {stage === "MAIN" && phase === "LOOP6" && (
-        <div className="absolute inset-0">
-          {/* 상단 타이틀 */}
-          <div className="absolute top-8 left-1/2 -translate-x-1/2 pointer-events-none">
-            <div className="px-5 py-2 rounded-full border border-white/20 bg-black/35 backdrop-blur-md text-white tracking-[0.22em] text-sm">
-              SELECT CATEGORY
-            </div>
-          </div>
 
-          {/* 호버 시 전체 살짝 딤 */}
-          {hoverCat && <div className="absolute inset-0 bg-black/25 transition-opacity duration-200" />}
 
-          {/* 3개 오락기 핫스팟 */}
-          <div className="absolute inset-0 pointer-events-auto">
-            {/* LEFT: UA 콘텐츠 */}
-            <div
-              className="absolute bottom-[30%] left-[7%] w-[24%] h-[75%]"
-              onMouseEnter={() => setHoverCat("UA")}
-              onMouseLeave={() => setHoverCat(null)}
-            >
-              <div
-                className={[
-                  "absolute inset-0 rounded-[28px] transition-opacity duration-200",
-                  hoverCat === "UA" ? "opacity-100" : "opacity-0",
-                ].join(" ")}
-              >
-                <div className="absolute inset-0 rounded-[28px] bg-yellow-300/15 blur-2xl mix-blend-screen" />
-              </div>
+{/* ✅ SKIP 버튼 (암전 후 선택 화면으로) */}
+{stage === "MAIN" && !showSelectImg && (
+  <button
+    onClick={handleSkipToSelect}
+    disabled={isSkipFading}
+    className={[
+      "absolute bottom-6 right-6 z-40 px-5 py-2 rounded-full",
+      "border border-white/20 bg-black/35 backdrop-blur-md text-white tracking-widest text-sm",
+      "hover:bg-white hover:text-black transition",
+      isSkipFading ? "opacity-50 cursor-not-allowed" : "",
+    ].join(" ")}
+  >
+    SKIP
+  </button>
+)}
 
-              <div className="absolute left-1/2 top-[28%] -translate-x-1/2 -translate-y-1/2">
-                <div
-                  className={[
-                    "px-4 py-2 rounded-full border border-white/20 backdrop-blur-md",
-                    "text-white text-sm tracking-wide",
-                    hoverCat === "UA" ? "bg-white/15" : "bg-black/50",
-                  ].join(" ")}
-                >
-                  UA 콘텐츠
-                </div>
-              </div>
-            </div>
+{/* ✅ REPLAY 버튼 (셀렉트 상태에서 SKIP 자리 대체) */}
+{stage === "MAIN" && showSelectImg && (
+  <button
+    onClick={handleReplay}
+    disabled={isSkipFading}
+    className={[
+      "absolute bottom-6 right-6 z-40 px-5 py-2 rounded-full",
+      "border border-white/20 bg-black/35 backdrop-blur-md text-white tracking-widest text-sm",
+      "hover:bg-white hover:text-black transition",
+      isSkipFading ? "opacity-50 cursor-not-allowed" : "",
+    ].join(" ")}
+  >
+    REPLAY
+  </button>
+)}
 
-            {/* MID: 브랜디드 */}
-            <div
-              className="absolute bottom-[30%] left-[38%] w-[24%] h-[75%]"
-              onMouseEnter={() => setHoverCat("BRANDED")}
-              onMouseLeave={() => setHoverCat(null)}
-            >
-              <div
-                className={[
-                  "absolute inset-0 rounded-[28px] transition-opacity duration-200",
-                  hoverCat === "BRANDED" ? "opacity-100" : "opacity-0",
-                ].join(" ")}
-              >
-                <div className="absolute inset-0 rounded-[28px] bg-yellow-300/15 blur-2xl mix-blend-screen" />
-              </div>
+      {/* ✅ SKIP 페이드(암전) 오버레이 */}
+<div
+  className={[
+    "absolute inset-0 z-[80] bg-black pointer-events-none",
+    "transition-opacity duration-300",
+    isSkipFading ? "opacity-100" : "opacity-0",
+  ].join(" ")}
+/>
 
-              <div className="absolute left-1/2 top-[28%] -translate-x-1/2 -translate-y-1/2">
-                <div
-                  className={[
-                    "px-4 py-2 rounded-full border border-white/20 backdrop-blur-md",
-                    "text-white text-sm tracking-wide",
-                    hoverCat === "BRANDED" ? "bg-white/15" : "bg-black/30",
-                  ].join(" ")}
-                >
-                  브랜디드
-                </div>
-              </div>
-            </div>
-
-            {/* RIGHT: AI 콘텐츠 */}
-            <div
-              className="absolute bottom-[30%] left-[68%] w-[24%] h-[75%]"
-              onMouseEnter={() => setHoverCat("AI")}
-              onMouseLeave={() => setHoverCat(null)}
-            >
-              <div
-                className={[
-                  "absolute inset-0 rounded-[28px] transition-opacity duration-200",
-                  hoverCat === "AI" ? "opacity-100" : "opacity-0",
-                ].join(" ")}
-              >
-                <div className="absolute inset-0 rounded-[28px] bg-yellow-300/15 blur-2xl mix-blend-screen" />
-              </div>
-
-              <div className="absolute left-1/2 top-[28%] -translate-x-1/2 -translate-y-1/2">
-                <div
-                  className={[
-                    "px-4 py-2 rounded-full border border-white/20 backdrop-blur-md",
-                    "text-white text-sm tracking-wide",
-                    hoverCat === "AI" ? "bg-white/15" : "bg-black/30",
-                  ].join(" ")}
-                >
-                  AI 콘텐츠
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+    </div>
     </main>
   );
 }
