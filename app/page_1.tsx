@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 const FPS = 24;
 
@@ -9,6 +10,39 @@ const f2s = (frame: number) => frame / FPS;
 // end frame 포함 구간을 "끝(배타)"로 만들기: (endFrame+1)/fps
 const endEx = (endFrame: number) => (endFrame + 1) / FPS;
 
+// ===== 시킹(프레임 점프) 유틸: seeked 이벤트를 기다려 시작 프레임 어긋남 최소화 =====
+const seekTo = (v: HTMLVideoElement, sec: number, timeoutMs = 160) =>
+  new Promise<void>((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try {
+        v.removeEventListener("seeked", onSeeked);
+      } catch {}
+      resolve();
+    };
+    const onSeeked = () => finish();
+
+    try {
+      v.addEventListener("seeked", onSeeked, { once: true } as any);
+    } catch {
+      // Safari 구형 대비
+      v.addEventListener("seeked", onSeeked as any);
+    }
+
+    const anyV: any = v;
+    try {
+      if (typeof anyV.fastSeek === "function") anyV.fastSeek(sec);
+      else v.currentTime = sec;
+    } catch {
+      v.currentTime = sec;
+    }
+
+    // 일부 환경에서 seeked가 안 오거나 늦게 오는 경우 대비
+    setTimeout(finish, timeoutMs);
+  });
+
 // ===== 영상 구간 =====
 const PLAY1 = { start: 0, end: 141 };
 const LOOP2 = { start: 142, end: 330 };
@@ -16,9 +50,14 @@ const PLAY3 = { start: 331, end: 606 };
 const LOOP4 = { start: 607, end: 797 };
 const PLAY5 = { start: 798, end: 893 };
 // ✅ 엔드(셀렉트) 상태에서 3분할 호버 루프 구간
-const HOVER_L = { start: 894, end: 917 };
-const HOVER_C = { start: 918, end: 941 };
-const HOVER_R = { start: 942, end: 965 };
+const HOVER_L = { start: 894, end: 915 };
+const HOVER_C = { start: 918, end: 938 };
+const HOVER_R = { start: 942, end: 960 };
+
+// ✅ 선택 클릭 줌인(재생 후 라우팅)
+const CLICK_UA = { start: 966, end: 1023, path: "/ua" };
+const CLICK_BRANDED = { start: 1025, end: 1082, path: "/branded" };
+const CLICK_AI = { start: 1084, end: 1131, path: "/ai" };
 
 // ===== 오디오 페이드 시간 =====
 const FADE_SEC = 1.0;
@@ -33,10 +72,99 @@ type HoverZone = "LEFT" | "CENTER" | "RIGHT" | null;
 export default function Page() {
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // ✅ object-contain일 때 실제 영상이 그려지는 영역(레터박스 제외)을 계산해서,
-  // 마스크 딤/이펙트를 "영상 박스"에만 적용하기 위한 값
   const containerRef = useRef<HTMLDivElement>(null);
-  const [videoBox, setVideoBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+
+  const router = useRouter();
+  const routerRef = useRef(router);
+  useEffect(() => {
+    routerRef.current = router;
+  }, [router]);
+
+  // ✅ UA/다른 페이지에서 '셀렉트(893f)로 복귀' 요청이 있으면 즉시 셀렉트 화면으로 점프
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let want = false;
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("select") === "1") want = true;
+      if (sessionStorage.getItem("returnToSelect") === "1") want = true;
+    } catch {}
+
+    if (!want) return;
+
+    // 1회성 처리
+    try {
+      sessionStorage.removeItem("returnToSelect");
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("select") === "1") {
+        sp.delete("select");
+        const next = sp.toString();
+        routerRef.current.replace(next ? `/?${next}` : "/");
+      }
+    } catch {}
+
+    const v = videoRef.current;
+    if (!v) return;
+
+    // BG가 아니고 MAIN 비디오가 준비되어 있지 않다면, 최소한 src를 MAIN으로 바꿔놓고 로드
+    // (893f에서 정지 상태만 필요하므로 autoplay/오디오 트리거는 요구하지 않음)
+    try {
+      v.src = "/videos/intro_v6.mp4";
+      v.loop = false;
+      v.muted = true;
+      v.load();
+    } catch {}
+
+    // 메타데이터만 오면 바로 점프
+    const onMeta = () => {
+      try {
+        v.removeEventListener("loadedmetadata", onMeta);
+      } catch {}
+
+      setStageSafe("MAIN");
+      setPhaseSafe("PLAY5");
+      setHoverZone(null);
+
+      try {
+        v.pause();
+        v.currentTime = f2s(PLAY5.end); // 893f
+      } catch {}
+
+      setShowSelectImg(true);
+      showSelectImgRef.current = true;
+
+      // hover 루프를 위해 muted는 유지 (원하면 여기서 false로 바꿔도 됨)
+    };
+
+    try {
+      v.addEventListener("loadedmetadata", onMeta);
+    } catch {}
+
+    // 이미 메타가 있는 경우 즉시 실행
+    if (Number.isFinite(v.duration) && v.duration > 0) {
+      onMeta();
+    }
+
+    return () => {
+      try {
+        v.removeEventListener("loadedmetadata", onMeta);
+      } catch {}
+    };
+  }, []);
+
+  // ✅ 선택 화면에서 클릭 줌인 재생 중인지
+  const [isZooming, setIsZooming] = useState(false);
+  // ✅ 라우팅 직전 버튼 플래시 방지용
+  const [isRouting, setIsRouting] = useState(false);
+  const isRoutingRef = useRef(false);
+
+  useEffect(() => {
+    isRoutingRef.current = isRouting;
+  }, [isRouting]);
+
+  const isZoomingRef = useRef(false);
+  const zoomSegRef = useRef<{ start: number; end: number; path: string } | null>(null);
 
 
   // ✅ 부팅(프리로드) 로딩 UI
@@ -68,26 +196,15 @@ export default function Page() {
   const [showSelectImg, setShowSelectImg] = useState(false);
   const showSelectImgRef = useRef(false);
 
-  const [selectImgVisible, setSelectImgVisible] = useState(false);
+  // showSelectImg state ↔ ref 동기화 (호버/클릭 가드용)
+  useEffect(() => {
+    showSelectImgRef.current = showSelectImg;
+  }, [showSelectImg]);
+
 
   // ✅ 3분할 호버 상태 (셀렉트 단계에서만 사용)
   const [hoverZone, setHoverZone] = useState<HoverZone>(null);
   const hoverZoneRef = useRef<HoverZone>(null);
-
-  // ✅ 부드러운 디졸브(페이드) 레이어: 호버 구간 전환 시 잠깐 검정으로 크로스페이드
-  const [hoverFade, setHoverFade] = useState(0); // 0~1
-
-  // showSelectImg가 켜질 때, CSS transition을 위해 1프레임 뒤 opacity를 올림
-  useEffect(() => {
-    showSelectImgRef.current = showSelectImg;
-    if (showSelectImg) {
-      setSelectImgVisible(false);
-      const id = requestAnimationFrame(() => setSelectImgVisible(true));
-      return () => cancelAnimationFrame(id);
-    } else {
-      setSelectImgVisible(false);
-    }
-  }, [showSelectImg]);
 
   // hoverZone state와 ref 동기화
   useEffect(() => {
@@ -117,74 +234,6 @@ export default function Page() {
       setShowSelectImg(false);
     }
   };
-
-  // ✅ 영상 박스 계산 (object-contain 기준)
-  useEffect(() => {
-    const el = containerRef.current;
-    const v = videoRef.current;
-    if (!el || !v) return;
-
-    let raf = 0;
-
-    const update = () => {
-      const cw = el.clientWidth;
-      const ch = el.clientHeight;
-
-      // 메타데이터 로드 전이면 계산 불가
-      const vw = v.videoWidth || 0;
-      const vh = v.videoHeight || 0;
-      if (!cw || !ch || !vw || !vh) {
-        setVideoBox(null);
-        return;
-      }
-
-      const videoAR = vw / vh;
-      const containerAR = cw / ch;
-
-      let width = cw;
-      let height = ch;
-
-      // object-contain
-      if (containerAR > videoAR) {
-        // 컨테이너가 더 넓음 → 높이에 맞추고 좌우 레터박스
-        height = ch;
-        width = Math.round(ch * videoAR);
-      } else {
-        // 컨테이너가 더 좁음 → 너비에 맞추고 상하 레터박스
-        width = cw;
-        height = Math.round(cw / videoAR);
-      }
-
-      const left = Math.round((cw - width) / 2);
-      const top = Math.round((ch - height) / 2);
-
-      setVideoBox({ left, top, width, height });
-    };
-
-    const schedule = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
-    };
-
-    // resize 대응
-    const ro = new ResizeObserver(schedule);
-    ro.observe(el);
-
-    // 메타데이터 로드/소스 변경 대응
-    const onMeta = () => schedule();
-    v.addEventListener("loadedmetadata", onMeta);
-    v.addEventListener("loadeddata", onMeta);
-
-    // 초기
-    schedule();
-
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      v.removeEventListener("loadedmetadata", onMeta);
-      v.removeEventListener("loadeddata", onMeta);
-    };
-  }, [stage, bootLoading]);
 
 
   // ===== HTMLAudio(ENTER) 페이드 유틸 =====
@@ -310,12 +359,106 @@ export default function Page() {
       const v = videoRef.current;
       if (!v) return;
 
+      // ✅ UA/카테고리 페이지에서 BACK으로 돌아온 경우:
+      // 프리로딩(BG01/오디오)을 다시 돌리지 말고 즉시 893f 셀렉트 화면으로 점프한다.
+      let wantSelect = false;
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        if (sp.get("select") === "1") wantSelect = true;
+        if (sessionStorage.getItem("returnToSelect") === "1") wantSelect = true;
+      } catch {}
+
+      if (wantSelect) {
+        // 1회성 처리
+        try {
+          sessionStorage.removeItem("returnToSelect");
+          const sp = new URLSearchParams(window.location.search);
+          if (sp.get("select") === "1") {
+            sp.delete("select");
+            const next = sp.toString();
+            routerRef.current.replace(next ? `/?${next}` : "/");
+          }
+        } catch {}
+
+        setIsSkipFading(true);
+
+        // 암전이 덮일 시간을 아주 잠깐 확보
+        await new Promise((r) => setTimeout(r, 180));
+
+        // 상태를 'MAIN + 셀렉트(PLAY5 end=893f)'로 고정
+        if (!cancelled) {
+          setBootProgress(100);
+          setBootLoading(false);
+        }
+
+        setStageSafe("MAIN");
+        setPhaseSafe("PLAY5");
+        setHoverZone(null);
+
+        // 줌인/라우팅/페이드 등 잠금 상태도 전부 해제
+        isZoomingRef.current = false;
+        setIsZooming(false);
+        zoomSegRef.current = null;
+
+        isRoutingRef.current = false;
+        setIsRouting(false);
+
+        // setIsSkipFading(false); // ✅ onMeta에서 페이드인 처리
+        skipLockRef.current = false;
+
+        // 비디오를 intro로 바꾸고 893f로 점프
+        try {
+          v.src = "/videos/intro_v6.mp4";
+          v.loop = false;
+          v.muted = true;
+          v.load();
+        } catch {}
+
+        const onMeta = () => {
+          try {
+            v.removeEventListener("loadedmetadata", onMeta);
+          } catch {}
+
+          try {
+            v.pause();
+            v.currentTime = f2s(PLAY5.end); // 893f
+          } catch {}
+
+          setShowSelectImg(true);
+          showSelectImgRef.current = true;
+
+          // ✅ 893f가 세팅된 다음 페이드인
+          requestAnimationFrame(() => {
+            if (!cancelled) setIsSkipFading(false);
+          });
+        };
+
+        try {
+          v.addEventListener("loadedmetadata", onMeta);
+        } catch {}
+
+        if (Number.isFinite(v.duration) && v.duration > 0) onMeta();
+
+        return; // 🔴 프리로딩 루틴(BG01/오디오) 실행 금지
+      }
+
+
+      // ✅ 시작하자마자 0%에서 멈춘 것처럼 보이지 않게 "미리" 진행률을 조금 올림
+      if (!cancelled) setBootProgress(1);
+
       // BG 메타데이터까지만 준비 (모바일 안정)
       v.src = "/videos/BG01.mp4";
       v.loop = true;
       v.muted = true;
       v.currentTime = 0;
       v.load(); // 모바일에서 이벤트 안 뜨는 것 방지
+
+      // 메타데이터가 늦어질 때는 30%까지 "천천히" 올라가게 표시(실제 로딩을 막지는 않음)
+      let fakePct = 1;
+      const fakeTimer = window.setInterval(() => {
+        fakePct = Math.min(30, fakePct + 1);
+        if (!cancelled) setBootProgress((p) => (p < fakePct ? fakePct : p));
+      }, 40);
 
       const waitBGReady = new Promise<void>((resolve) => {
         const onReady = () => {
@@ -328,45 +471,42 @@ export default function Page() {
       // 🔑 모바일에서는 큰 mp4 프리로드 안 함 (오디오만)
       const assets = ["/videos/BGM_LOOP.wav", "/videos/BGM_ENTER.mp3"];
 
-      let done = 0;
-      const total = assets.length + 1;
-
-      const bump = () => {
-        done += 1;
-        const pct = Math.round((done / total) * 100);
-        if (!cancelled) setBootProgress(pct);
-      };
-
       // ⏱️ 4초 타임아웃 (어떤 경우든 멈추지 않게)
       const timeout = new Promise<void>((resolve) => setTimeout(resolve, 4000));
 
       await Promise.race([waitBGReady, timeout]);
-      bump();
 
-      await Promise.all(
-        assets.map(async (url) => {
-          try {
-            await fetch(url, { cache: "force-cache" });
-          } catch {}
-          bump();
-        })
-      );
+      window.clearInterval(fakeTimer);
+      if (!cancelled) setBootProgress((p) => (p < 40 ? 40 : p));
+
+      // 오디오/리소스는 "단계별"로 진행률 반영 (캐시가 있으면 빠르게 100까지 올라감)
+      for (let i = 0; i < assets.length; i++) {
+        const url = assets[i];
+        try {
+          await fetch(url, { cache: "force-cache" });
+        } catch {}
+        const pct = i === 0 ? 70 : 100;
+        if (!cancelled) setBootProgress((p) => (p < pct ? pct : p));
+      }
 
       if (!cancelled) {
         setBootLoading(false);
         v.play().catch(() => {});
       }
     } catch {
-      if (!cancelled) setBootLoading(false);
+      if (!cancelled) {
+        // 실패해도 화면은 열어준다
+        setBootLoading(false);
+      }
     }
   };
 
   preload();
-
   return () => {
     cancelled = true;
   };
 }, []);
+
 
   // ===== BG 화면 유지 =====
   useEffect(() => {
@@ -407,9 +547,64 @@ export default function Page() {
       if (stageRef.current === "MAIN") {
         const t = v.currentTime;
         const p = phaseRef.current;
+        // ✅ 클릭 줌인 재생이 최우선 (셀렉트/호버/893f 고정보다 먼저 처리)
+        if (isZoomingRef.current && zoomSegRef.current) {
+                    const seg = zoomSegRef.current;
+                    const startT = f2s(seg.start);
+                    const endT = endEx(seg.end);
+
+                    // 안전: 시작보다 앞이면 시작으로 당김
+                    if (v.currentTime < startT - 0.0005) {
+                      const anyV: any = v;
+                      try {
+                        if (typeof anyV.fastSeek === "function") anyV.fastSeek(startT);
+                        else v.currentTime = startT;
+                      } catch {
+                        v.currentTime = startT;
+                      }
+                    }
+
+                    if (v.paused) v.play().catch(() => {});
+
+                    // ✅ intro_v6가 구간 끝에서 file-end로 떨어지면(특히 AI) currentTime이 0으로 튈 수 있음
+                    // endT가 duration을 넘는 경우, "실제 영상 끝"을 종료로 인정
+                    const dur = v.duration;
+                    const hasDur = Number.isFinite(dur) && dur > 0;
+                    const effectiveEndT = hasDur ? Math.min(endT, Math.max(0, dur - 0.02)) : endT;
+
+                    let routed = false;
+
+                    if (v.currentTime >= effectiveEndT || (v.ended && v.currentTime >= startT)) {
+                      // 끝 도달(또는 파일 끝) → 정지 후 라우팅
+                      try {
+                        v.pause();
+                      } catch {}
+                      const path = seg.path;
+
+                      // 상태 정리(중복 이동 방지)
+                      isZoomingRef.current = false;
+                      setIsZooming(false);
+                      zoomSegRef.current = null;
+                      setHoverZone(null);
+                      setShowSelectImg(false);
+                      showSelectImgRef.current = false;
+
+                      // 다음 페이지 이동
+                      isRoutingRef.current = true;
+          setIsRouting(true);
+          routerRef.current.push(path);
+                      routed = true;
+                    }
+
+                    if (routed) return;
+
+                    raf = requestAnimationFrame(tick);
+                    return;
+                  }
 
         // ✅ 셀렉트(엔드) 모드: 893f 고정 + 3분할 호버 루프
         if (showSelectImgRef.current) {
+
           const hz = hoverZoneRef.current;
 
           const seg =
@@ -424,8 +619,17 @@ export default function Page() {
             }
           } else {
             // 호버 중 → 해당 구간 루프
-            if (t < f2s(seg.start) || t >= endEx(seg.end)) {
-              v.currentTime = f2s(seg.start);
+            const startT = f2s(seg.start);
+            const endT = endEx(seg.end);
+            const LOOP_EPS = 0.75 / FPS; // ~0.75프레임 일찍 되감기(멈칫 감소)
+            if (t < startT || t >= endT - LOOP_EPS) {
+              const anyV: any = v;
+              try {
+                if (typeof anyV.fastSeek === "function") anyV.fastSeek(startT);
+                else v.currentTime = startT;
+              } catch {
+                v.currentTime = startT;
+              }
             }
             if (v.paused) {
               v.play().catch(() => {});
@@ -499,7 +703,7 @@ export default function Page() {
     setShowSelectImg(false);
     setPhaseSafe("PLAY1");
 
-    v.src = "/videos/intro_v4.mp4";
+    v.src = "/videos/intro_v6.mp4";
     v.loop = false;
     v.muted = false; // 나레이션 포함
     v.currentTime = f2s(PLAY1.start);
@@ -621,49 +825,79 @@ const handleSkipToSelect = async () => {
     skipLockRef.current = false;
     await handleStartMain();
   };
-
-  // ✅ 셀렉트 상태에서 호버 구간 전환을 위한 크로스페이드(검정) 처리
-  const hoverTransitionTimerRef = useRef<number | null>(null);
-
-  const transitionHoverZone = (next: HoverZone) => {
+  // ✅ 셀렉트 상태 호버: 구간 즉시 전환(디졸브 없음)
+  const setHoverZoneImmediate = (next: HoverZone) => {
     if (!showSelectImgRef.current) return;
+    // ✅ 클릭 줌인 재생 중에는 hover 이벤트가 currentTime을 건드리지 못하게 차단
+    if (isZoomingRef.current) return;
 
     const prev = hoverZoneRef.current;
     if (prev === next) return;
 
-    if (hoverTransitionTimerRef.current) {
-      window.clearTimeout(hoverTransitionTimerRef.current);
-      hoverTransitionTimerRef.current = null;
+    setHoverZone(next);
+
+    const v = videoRef.current;
+    if (!v) return;
+
+    if (!next) {
+      v.pause();
+      v.currentTime = f2s(PLAY5.end); // 893f 고정
+      return;
     }
 
-    // 검정으로 살짝 덮었다가(seek 노이즈 감추기) 구간 전환
-    setHoverFade(1);
-
-    hoverTransitionTimerRef.current = window.setTimeout(() => {
-      setHoverZone(next);
-
-      const v = videoRef.current;
-      if (v) {
-        if (!next) {
-          v.pause();
-          v.currentTime = f2s(PLAY5.end);
-        } else {
-          const seg = next === "LEFT" ? HOVER_L : next === "CENTER" ? HOVER_C : HOVER_R;
-          v.currentTime = f2s(seg.start);
-          v.play().catch(() => {});
-        }
-      }
-
-      requestAnimationFrame(() => setHoverFade(0));
-      hoverTransitionTimerRef.current = null;
-    }, 140);
+    const seg = next === "LEFT" ? HOVER_L : next === "CENTER" ? HOVER_C : HOVER_R;
+    // hover 전환은 즉시지만, seek 직후 바로 play하면 간혹 1~2프레임 어긋나 보일 수 있어 1프레임 뒤 재생
+    v.pause();
+    v.currentTime = f2s(seg.start);
+    requestAnimationFrame(() => v.play().catch(() => {}));
   };
 
-  // 클릭 핸들러 (원하는 라우팅/분기 로직으로 교체)
-  const handleSelectClick = (z: Exclude<HoverZone, null>) => {
-    // TODO: 여기서 router.push(...) 또는 분기 로직을 넣으면 됨
-    console.log("selected:", z);
-  };
+  
+// 클릭 핸들러: 줌인 구간 재생 후 라우팅
+const handleSelectClick = async (z: Exclude<HoverZone, null>) => {
+  if (!showSelectImgRef.current) return;
+  if (isZoomingRef.current) return;
+
+  const v = videoRef.current;
+  if (!v) return;
+
+  const seg = z === "LEFT" ? CLICK_UA : z === "CENTER" ? CLICK_BRANDED : CLICK_AI;
+
+  // 줌인 재생 모드 ON (호버 루프는 잠시 무시)
+  isZoomingRef.current = true;
+  setIsZooming(true);
+  // 라우팅 플래그 초기화
+  isRoutingRef.current = false;
+  setIsRouting(false);
+  zoomSegRef.current = seg;
+
+  // ✅ 클릭 시작 순간부터: 호버/893f 고정 로직이 currentTime을 건드리지 못하게 정리
+  setHoverZone(null);
+  // ⚠️ 셀렉트 이미지는 "seek 완료 후" 숨긴다 (893f 프레임이 잠깐 노출되는 플래시 방지)
+
+  // ✅ 시작 프레임으로 "확실히" 이동한 뒤 재생 (seeked 대기)
+  try {
+    v.pause();
+  } catch {}
+  const startT = f2s(seg.start);
+  await seekTo(v, startT);
+
+  // 일부 브라우저는 seek 직후 첫 틱에서 한 프레임 이전을 잠깐 보여줄 수 있어
+  // play 전에 한번 더 당겨줌(극미세)
+  if (v.currentTime < startT - 0.0005) {
+    try {
+      v.currentTime = startT;
+    } catch {}
+  }
+
+  // ✅ seek이 끝나고 start 프레임에 붙은 뒤에 셀렉트 오버레이를 숨긴다 (플래시 방지)
+  setShowSelectImg(false);
+  showSelectImgRef.current = false;
+
+  v.play().catch(() => {});
+};
+
+
 
 
   return (
@@ -704,38 +938,32 @@ const handleSkipToSelect = async () => {
         alt="select"
         className={[
           "absolute inset-0 w-full h-full object-contain bg-black",
-          "transition-opacity duration-500",
-          showSelectImg && selectImgVisible && !hoverZone ? "opacity-100" : "opacity-0",
+                    showSelectImg ? "opacity-100" : "opacity-0",
+          hoverZone ? "invisible" : "visible",
           "pointer-events-none",
         ].join(" ")}
         draggable={false}
       />
 
-      {/* ✅ 호버 전환용 크로스페이드 레이어 */}
-      <div
-        className="absolute inset-0 z-20 bg-black transition-opacity duration-200 pointer-events-none"
-        style={{ opacity: showSelectImg ? hoverFade : 0 }}
-      />
-
       {/* ✅ 셀렉트 3분할 핫스팟 (세로 3등분) */}
-      {stage === "MAIN" && showSelectImg && (
+      {stage === "MAIN" && showSelectImg && !isRouting && (
         <div
-          className="absolute inset-0 z-30 flex"
-          onMouseLeave={() => transitionHoverZone(null)}
+          className={["absolute inset-0 z-30 flex", isZooming ? "pointer-events-none" : ""].join(" ")}
+          onMouseLeave={() => setHoverZoneImmediate(null)}
         >
           <div
-            className="flex-1"
-            onMouseEnter={() => transitionHoverZone("LEFT")}
+            className="flex-1 cursor-pointer"
+            onMouseEnter={() => setHoverZoneImmediate("LEFT")}
             onClick={() => handleSelectClick("LEFT")}
           />
           <div
-            className="flex-1"
-            onMouseEnter={() => transitionHoverZone("CENTER")}
+            className="flex-1 cursor-pointer"
+            onMouseEnter={() => setHoverZoneImmediate("CENTER")}
             onClick={() => handleSelectClick("CENTER")}
           />
           <div
-            className="flex-1"
-            onMouseEnter={() => transitionHoverZone("RIGHT")}
+            className="flex-1 cursor-pointer"
+            onMouseEnter={() => setHoverZoneImmediate("RIGHT")}
             onClick={() => handleSelectClick("RIGHT")}
           />
         </div>
@@ -755,7 +983,7 @@ const handleSkipToSelect = async () => {
           <div className="text-lg mb-6">소리를 켜세요</div>
           <button
             onClick={handleStartMain}
-            className="px-10 py-3 border border-white/70 rounded-full tracking-widest hover:bg-white hover:text-black transition"
+            className="px-10 py-3 border border-white/70 rounded-full tracking-widest hover:bg-white hover:text-black transition cursor-pointer"
           >
             ENTER
           </button>
@@ -766,9 +994,9 @@ const handleSkipToSelect = async () => {
       {stage === "MAIN" && showDown && (
         <button
           onClick={handleDownToPlay3}
-          className="absolute bottom-10 left-1/2 -translate-x-1/2 w-12 h-12 rounded-full border border-white/60 text-white flex items-center justify-center hover:bg-white hover:text-black transition"
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 px-8 py-3 border border-white/70 rounded-full text-white hover:bg-white hover:text-black transition whitespace-nowrap cursor-pointer"
         >
-          ↓
+          문앞으로 이동
         </button>
       )}
 
@@ -776,21 +1004,21 @@ const handleSkipToSelect = async () => {
       {stage === "MAIN" && showEnterBtn && (
         <button
           onClick={handleEnterToPlay5}
-          className="absolute bottom-10 left-1/2 -translate-x-1/2 px-10 py-3 border border-white/70 rounded-full tracking-widest text-white hover:bg-white hover:text-black transition"
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 px-10 py-3 border border-white/70 rounded-full tracking-widest text-white hover:bg-white hover:text-black transition cursor-pointer"
         >
-          ENTER
+          입장
         </button>
       )}
 
 
 
 {/* ✅ SKIP 버튼 (암전 후 선택 화면으로) */}
-{stage === "MAIN" && !showSelectImg && (
+{stage === "MAIN" && !showSelectImg && !isZooming && !isRouting && (
   <button
     onClick={handleSkipToSelect}
     disabled={isSkipFading}
     className={[
-      "absolute bottom-6 right-6 z-40 px-5 py-2 rounded-full",
+      "absolute bottom-6 right-6 z-40 px-5 py-2 rounded-full cursor-pointer",
       "border border-white/20 bg-black/35 backdrop-blur-md text-white tracking-widest text-sm",
       "hover:bg-white hover:text-black transition",
       isSkipFading ? "opacity-50 cursor-not-allowed" : "",
@@ -801,12 +1029,12 @@ const handleSkipToSelect = async () => {
 )}
 
 {/* ✅ REPLAY 버튼 (셀렉트 상태에서 SKIP 자리 대체) */}
-{stage === "MAIN" && showSelectImg && (
+{stage === "MAIN" && showSelectImg && !isRouting && (
   <button
     onClick={handleReplay}
     disabled={isSkipFading}
     className={[
-      "absolute bottom-6 right-6 z-40 px-5 py-2 rounded-full",
+      "absolute bottom-6 right-6 z-40 px-5 py-2 rounded-full cursor-pointer",
       "border border-white/20 bg-black/35 backdrop-blur-md text-white tracking-widest text-sm",
       "hover:bg-white hover:text-black transition",
       isSkipFading ? "opacity-50 cursor-not-allowed" : "",
