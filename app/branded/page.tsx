@@ -87,39 +87,11 @@ export default function BrandedPage() {
   const items: ContentItem[] = useMemo(
     () => [
       {
-        youtubeUrl: "https://www.youtube.com/watch?v=6gJSHnAfUeA",
+        youtubeUrl: "https://www.youtube.com/watch?v=YLo0HFV45Ek",
         fallbackTitle: "YouTube Video",
       },
       {
-        youtubeUrl: "https://www.youtube.com/watch?v=MKlCyrXsXAg",
-        fallbackTitle: "YouTube Video",
-      },
-      {
-        youtubeUrl: "https://www.youtube.com/watch?v=Fd2TOTgV3kQ",
-        fallbackTitle: "YouTube Video",
-      },
-      {
-        youtubeUrl: "https://www.youtube.com/watch?v=msGe62jaVDM",
-        fallbackTitle: "YouTube Video",
-      },
-      {
-        youtubeUrl: "https://www.youtube.com/watch?v=79C6Ws6Oo0I",
-        fallbackTitle: "YouTube Video",
-      },
-      {
-        youtubeUrl: "https://www.youtube.com/watch?v=sCuiAoy7OE0",
-        fallbackTitle: "YouTube Video",
-      },
-      {
-        youtubeUrl: "https://www.youtube.com/watch?v=XdOwfYu45XQ",
-        fallbackTitle: "YouTube Video",
-      },
-      {
-        youtubeUrl: "https://www.youtube.com/watch?v=7ezlVp3B_GA",
-        fallbackTitle: "YouTube Video",
-      },
-      {
-        youtubeUrl: "https://www.youtube.com/watch?v=dfrd_6zOmzI",
+        youtubeUrl: "https://youtu.be/14bSxSvj-NM?si=Mol2n4P-yJaAL_4L",
         fallbackTitle: "YouTube Video",
       },
       

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 
 type ContentItem = {
   youtubeUrl: string;
@@ -82,46 +83,84 @@ function loadYouTubeIframeApi(): Promise<void> {
 
 export default function AiPage() {
   const router = useRouter();
+  const pathname = usePathname();
 
   // ✅ AI 카테고리 목록(여기에만 추가하면 됨)
   const items: ContentItem[] = useMemo(
     () => [
       {
-        youtubeUrl: "https://www.youtube.com/watch?v=6gJSHnAfUeA",
+        youtubeUrl: "https://www.youtube.com/watch?v=pRdKjAnMWRU",
         fallbackTitle: "YouTube Video",
       },
       {
-        youtubeUrl: "https://www.youtube.com/watch?v=MKlCyrXsXAg",
+        youtubeUrl: "https://youtu.be/ZixMzaL9DA0?si=rlR4rEeuyysg1yDi",
         fallbackTitle: "YouTube Video",
       },
       {
-        youtubeUrl: "https://www.youtube.com/watch?v=Fd2TOTgV3kQ",
+        youtubeUrl: "https://youtu.be/UwaZDUgCJFo?si=rHAPJwjjS9nmiBe8",
         fallbackTitle: "YouTube Video",
       },
       {
-        youtubeUrl: "https://www.youtube.com/watch?v=msGe62jaVDM",
+        youtubeUrl: "https://youtu.be/HkuGGac8FQE?si=TIqnF2OiK4vDdrwn",
         fallbackTitle: "YouTube Video",
       },
       {
-        youtubeUrl: "https://www.youtube.com/watch?v=79C6Ws6Oo0I",
+        youtubeUrl: "https://youtu.be/1_-sc8ol_Ig?si=ANAnrNS4gB4Vlzo2",
         fallbackTitle: "YouTube Video",
       },
       {
-        youtubeUrl: "https://www.youtube.com/watch?v=sCuiAoy7OE0",
+        youtubeUrl: "https://youtu.be/z1liGsPRob4?si=skkiIy6xKxz0SjkV",
         fallbackTitle: "YouTube Video",
       },
       {
-        youtubeUrl: "https://www.youtube.com/watch?v=XdOwfYu45XQ",
+        youtubeUrl: "https://youtu.be/gzYWddJCBAU?si=gGbxQCvlSnVeYhmN",
         fallbackTitle: "YouTube Video",
       },
       {
-        youtubeUrl: "https://www.youtube.com/watch?v=7ezlVp3B_GA",
+        youtubeUrl: "https://youtu.be/LRs-tBqMSGE?si=thD9qjZhS7yP4lR5",
         fallbackTitle: "YouTube Video",
       },
       {
-        youtubeUrl: "https://www.youtube.com/watch?v=dfrd_6zOmzI",
+        youtubeUrl: "https://youtu.be/JMqlhBeklQE?si=-ZGNTkUv8BzeKNzZ",
         fallbackTitle: "YouTube Video",
       },
+            {
+        youtubeUrl: "https://youtu.be/ROYLaZD6X5E?si=ljTKil-eHB6kBbOX",
+        fallbackTitle: "YouTube Video",
+      },
+            {
+        youtubeUrl: "https://youtu.be/sOd9Q7e8rcM?si=4fwb3Q1P9uHNsHG2",
+        fallbackTitle: "YouTube Video",
+      },
+            {
+        youtubeUrl: "https://youtu.be/uzAEc0MePQM?si=eq-qDkdMLX01niN6",
+        fallbackTitle: "YouTube Video",
+      },
+            {
+        youtubeUrl: "https://youtu.be/qgwF1BhtoEo?si=r---KsTIZQLE7_Tm",
+        fallbackTitle: "YouTube Video",
+      },
+            {
+        youtubeUrl: "https://youtu.be/I88oVlk4hhc?si=XJfeRRBaT8Sm7BiE",
+        fallbackTitle: "YouTube Video",
+      },
+            {
+        youtubeUrl: "https://youtu.be/X6Q8HtiQ45k?si=a4zsmNMih13MYohj",
+        fallbackTitle: "YouTube Video",
+      },
+            {
+        youtubeUrl: "https://youtu.be/nK5icmdF-3E?si=PVb006trKODE8d1E",
+        fallbackTitle: "YouTube Video",
+      },
+            {
+        youtubeUrl: "https://youtu.be/5QHAo8M6lbs?si=euTSI5y-OPbrmnuU",
+        fallbackTitle: "YouTube Video",
+      },
+            {
+        youtubeUrl: "https://youtu.be/J2Ax1DiMpJY?si=JPM5XaQFR0qZZilu",
+        fallbackTitle: "YouTube Video",
+      },
+
       
       // { youtubeUrl: "https://www.youtube.com/watch?v=XXXXXXXXXXX", fallbackTitle: "YouTube Video" },
     ],
@@ -438,6 +477,26 @@ export default function AiPage() {
           <div>
             <div className="text-xs tracking-[0.22em] text-white/70">CATEGORY</div>
             <h1 className="text-2xl mt-1">AI CONTENTS</h1>
+<nav className="mt-4 flex gap-6 text-sm tracking-[0.18em] uppercase">
+  <Link
+    href="/ai"
+    className={`cursor-pointer transition ${pathname === "/ai" ? "text-white" : "text-white/50 hover:text-white/80"}`}
+  >
+    Work
+  </Link>
+  <Link
+    href="/ai/lab"
+    className={`cursor-pointer transition ${pathname.startsWith("/ai/lab") ? "text-white" : "text-white/50 hover:text-white/80"}`}
+  >
+    Lab
+  </Link>
+  <Link
+    href="/ai/article"
+    className={`cursor-pointer transition ${pathname.startsWith("/ai/article") ? "text-white" : "text-white/50 hover:text-white/80"}`}
+  >
+    Article
+  </Link>
+</nav>
           </div>
 
           <button

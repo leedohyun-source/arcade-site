@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 28, "column": 0}, "map": {"version":3,"sources":["file:///C:/Users/leehak/arcade-site/app/ai/_components/BackToSelectButton.tsx"],"sourcesContent":["\"use client\";\n\nimport { useRouter } from \"next/navigation\";\n\nexport default function BackToSelectButton({ className }: { className?: string }) {\n  const router = useRouter();\n\n  const goBack = () => {\n    try {\n      sessionStorage.setItem(\"returnToSelect\", \"1\");\n    } catch {}\n    router.push(\"/?select=1\");\n  };\n\n  return (\n    <button\n      onClick={goBack}\n      className={\n        className ??\n        \"cursor-pointer px-4 py-2 rounded-full border border-white/20 bg-black/30 backdrop-blur-md hover:bg-white hover:text-black transition\"\n      }\n    >\n      BACK\n    </button>\n  );\n}\n"],"names":[],"mappings":";;;;;AAEA;AAFA;;;AAIe,SAAS,mBAAmB,EAAE,SAAS,EAA0B;IAC9E,MAAM,SAAS,IAAA,+IAAS;IAExB,MAAM,SAAS;QACb,IAAI;YACF,eAAe,OAAO,CAAC,kBAAkB;QAC3C,EAAE,OAAM,CAAC;QACT,OAAO,IAAI,CAAC;IACd;IAEA,qBACE,8OAAC;QACC,SAAS;QACT,WACE,aACA;kBAEH;;;;;;AAIL"}}]
+}
