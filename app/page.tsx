@@ -155,6 +155,13 @@ export default function Page() {
 
   // ✅ 선택 화면에서 클릭 줌인 재생 중인지
   const [isZooming, setIsZooming] = useState(false);
+  
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  useEffect(() => {
+    // 터치 기능이 있는 기기(모바일/태블릿)인지 확인
+    setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
+
   // ✅ 라우팅 직전 버튼 플래시 방지용
   const [isRouting, setIsRouting] = useState(false);
   const isRoutingRef = useRef(false);
@@ -840,6 +847,8 @@ const handleSkipToSelect = async () => {
   };
   // ✅ 셀렉트 상태 호버: 구간 즉시 전환(디졸브 없음)
   const setHoverZoneImmediate = (next: HoverZone) => {
+    // 터치 디바이스(모바일)라면 호버 효과 무시 (그냥 정지화면 유지)
+    if (isTouchDevice) return;
     if (!showSelectImgRef.current) return;
     // ✅ 클릭 줌인 재생 중에는 hover 이벤트가 currentTime을 건드리지 못하게 차단
     if (isZoomingRef.current) return;
@@ -1065,6 +1074,29 @@ const handleSelectClick = async (z: Exclude<HoverZone, null>) => {
   >
     REPLAY
   </button>
+)}
+
+{/* ✅ [수정] 선택 유도 텍스트 (영문 + 한글) */}
+{stage === "MAIN" && showSelectImg && !isZooming && !isRouting && (
+  <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-40 text-center pointer-events-none drop-shadow-md animate-pulse">
+    
+    {/* 1. 영문 (노란색, 작게, 자간 넓게) */}
+    <p 
+      className="text-yellow-400 text-[11px] tracking-[0.10em] font-medium mb-1"
+      style={{ fontFamily: '"Pretendard Variable", Pretendard, sans-serif' }}
+    >
+      SELECT THE GAME YOU WANT TO PLAY
+    </p>
+
+    {/* 2. 한글 (흰색, 크게) */}
+    <p 
+      className="text-white text-[22px] tracking-[0.05em] font-light"
+      style={{ fontFamily: '"Pretendard Variable", Pretendard, sans-serif' }}
+    >
+      플레이하고 싶은 게임기를 선택하세요
+    </p>
+    
+  </div>
 )}
 
       {/* ✅ SKIP 페이드(암전) 오버레이 */}
