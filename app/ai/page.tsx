@@ -88,34 +88,7 @@ export default function AiPage() {
   // ✅ AI 카테고리 목록(여기에만 추가하면 됨)
   const items: ContentItem[] = useMemo(
     () => [
-      {
-        youtubeUrl: "https://www.youtube.com/watch?v=pRdKjAnMWRU",
-        fallbackTitle: "YouTube Video",
-      },
-      {
-        youtubeUrl: "https://youtu.be/ZixMzaL9DA0?si=rlR4rEeuyysg1yDi",
-        fallbackTitle: "YouTube Video",
-      },
-      {
-        youtubeUrl: "https://youtu.be/UwaZDUgCJFo?si=rHAPJwjjS9nmiBe8",
-        fallbackTitle: "YouTube Video",
-      },
-      {
-        youtubeUrl: "https://youtu.be/HkuGGac8FQE?si=TIqnF2OiK4vDdrwn",
-        fallbackTitle: "YouTube Video",
-      },
-      {
-        youtubeUrl: "https://youtu.be/1_-sc8ol_Ig?si=ANAnrNS4gB4Vlzo2",
-        fallbackTitle: "YouTube Video",
-      },
-      {
-        youtubeUrl: "https://youtu.be/z1liGsPRob4?si=skkiIy6xKxz0SjkV",
-        fallbackTitle: "YouTube Video",
-      },
-      {
-        youtubeUrl: "https://youtu.be/gzYWddJCBAU?si=gGbxQCvlSnVeYhmN",
-        fallbackTitle: "YouTube Video",
-      },
+
       {
         youtubeUrl: "https://youtu.be/LRs-tBqMSGE?si=thD9qjZhS7yP4lR5",
         fallbackTitle: "YouTube Video",
@@ -148,10 +121,7 @@ export default function AiPage() {
         youtubeUrl: "https://youtu.be/X6Q8HtiQ45k?si=a4zsmNMih13MYohj",
         fallbackTitle: "YouTube Video",
       },
-            {
-        youtubeUrl: "https://youtu.be/nK5icmdF-3E?si=PVb006trKODE8d1E",
-        fallbackTitle: "YouTube Video",
-      },
+     
             {
         youtubeUrl: "https://youtu.be/5QHAo8M6lbs?si=euTSI5y-OPbrmnuU",
         fallbackTitle: "YouTube Video",

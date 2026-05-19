@@ -875,7 +875,7 @@ const handleSkipToSelect = async () => {
   };
 
   
-// ✅ 클릭 핸들러 수정: 데스크탑 깜빡임 해결 + 모바일 튕김 방지
+// 클릭 핸들러: 줌인 구간 재생 후 라우팅
 const handleSelectClick = async (z: Exclude<HoverZone, null>) => {
   if (!showSelectImgRef.current) return;
   if (isZoomingRef.current) return;
@@ -885,7 +885,7 @@ const handleSelectClick = async (z: Exclude<HoverZone, null>) => {
 
   const seg = z === "LEFT" ? CLICK_UA : z === "CENTER" ? CLICK_BRANDED : CLICK_AI;
 
-  // SFX 재생
+  // ✅ SFX: 클릭 시 whoosh 1회 (겹침 방지)
   try {
     const a = whooshRef.current;
     if (a) {
@@ -895,37 +895,38 @@ const handleSelectClick = async (z: Exclude<HoverZone, null>) => {
     }
   } catch {}
 
-  // 1. 줌인 상태 시작
+  // 줌인 재생 모드 ON (호버 루프는 잠시 무시)
   isZoomingRef.current = true;
   setIsZooming(true);
+  // 라우팅 플래그 초기화
   isRoutingRef.current = false;
   setIsRouting(false);
   zoomSegRef.current = seg;
 
-  // 🚨 [수정] 여기서 setHoverZone(null)을 하지 않습니다!
-  // 이걸 지금 해버리면 호버 중이던 이미지가 사라지고 "불 꺼진 대기 이미지"가 순간적으로 나옵니다.
-  // 줌인 영상이 준비될 때까지 호버 상태(켜진 상태)를 유지합니다.
+  // ✅ 클릭 시작 순간부터: 호버/893f 고정 로직이 currentTime을 건드리지 못하게 정리
+  setHoverZone(null);
+  // ⚠️ 셀렉트 이미지는 "seek 완료 후" 숨긴다 (893f 프레임이 잠깐 노출되는 플래시 방지)
 
-  // 2. 영상 위치 이동
-  try { v.pause(); } catch {}
-  
+  // ✅ 시작 프레임으로 "확실히" 이동한 뒤 재생 (seeked 대기)
+  try {
+    v.pause();
+  } catch {}
   const startT = f2s(seg.start);
   await seekTo(v, startT);
 
+  // 일부 브라우저는 seek 직후 첫 틱에서 한 프레임 이전을 잠깐 보여줄 수 있어
+  // play 전에 한번 더 당겨줌(극미세)
   if (v.currentTime < startT - 0.0005) {
-    try { v.currentTime = startT; } catch {}
+    try {
+      v.currentTime = startT;
+    } catch {}
   }
 
-  // 3. 영상 재생
-  v.play().catch(() => {});
-
-  // 4. 모바일/데스크탑 안정화 대기 (0.25초)
-  await new Promise((resolve) => setTimeout(resolve, 250));
-
-  // 5. [이동됨] 이제 모든 준비가 끝났으니 가림막을 치우고 호버 상태도 초기화합니다.
+  // ✅ seek이 끝나고 start 프레임에 붙은 뒤에 셀렉트 오버레이를 숨긴다 (플래시 방지)
   setShowSelectImg(false);
   showSelectImgRef.current = false;
-  setHoverZone(null); // 👈 범인은 이 녀석이었습니다. 맨 마지막에 처리합니다.
+
+  v.play().catch(() => {});
 };
 
 

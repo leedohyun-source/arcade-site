@@ -154,10 +154,7 @@ export default function UaPage() {
         youtubeUrl: "https://youtu.be/nIAAE7C4IdE?si=dJcmu_KVWfGcwpLS",
         fallbackTitle: "YouTube Video",
       },
-            {
-        youtubeUrl: "https://youtu.be/xwpYYreynFc?si=AzLz2LZSjH6MP47t",
-        fallbackTitle: "YouTube Video",
-      },
+           
             {
         youtubeUrl: "https://youtu.be/MIG1bSOHHYI?si=iN6rGRdxw-8uCe2N",
         fallbackTitle: "YouTube Video",
